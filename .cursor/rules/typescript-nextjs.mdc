@@ -1,0 +1,113 @@
+---
+globs: *.ts,*.tsx
+---
+
+# TypeScript and Next.js Conventions
+
+## TypeScript Configuration
+
+Follow the strict TypeScript setup defined in
+[tsconfig.json](mdc:tsconfig.json):
+
+- **Target**: ES2017 for compatibility
+- **Strict mode**: Enabled (all strict checks active)
+- **Module**: ESNext with bundler resolution
+- **JSX**: preserve (handled by Next.js)
+
+## Next.js App Router Patterns
+
+### File Conventions
+
+- `page.tsx` - Page component (creates route)
+- `layout.tsx` - Layout wrapper (persists across navigations)
+- `route.ts` - API route handler (GET, POST, etc.)
+- `loading.tsx` - Loading UI for Suspense boundaries
+- `error.tsx` - Error boundary component
+
+### Client vs Server Components
+
+- **Default**: Server Components (no "use client" directive)
+- **Use "use client"** when:
+  - Using React hooks (useState, useEffect, etc.)
+  - Using browser APIs (window, localStorage)
+  - Using event handlers (onClick, onChange)
+  - Using custom hooks from [app/hooks/](mdc:app/hooks/)
+
+### Metadata and SEO
+
+Export `metadata` object from page/layout for SEO:
+
+```typescript
+export const metadata: Metadata = {
+    title: "Page Title",
+    description: "Page description",
+};
+```
+
+## Import Conventions
+
+### Path Aliases
+
+Use `@/` prefix for absolute imports:
+
+```typescript
+import { createClient } from "@/lib/supabase/client";
+import { baseURL } from "@/baseUrl";
+```
+
+### Import Order (recommended)
+
+1. React/Next.js imports
+2. Third-party libraries
+3. Internal modules (@/ imports)
+4. Types (import type)
+5. Relative imports
+
+### Type Imports
+
+Use `import type` for type-only imports to optimize bundle:
+
+```typescript
+import type { User } from "@supabase/supabase-js";
+import type { NextRequest } from "next/server";
+```
+
+## Async Patterns
+
+### Server Components
+
+Can be async functions directly:
+
+```typescript
+export default async function Page() {
+    const data = await fetchData();
+    return <div>{data}</div>;
+}
+```
+
+### Client Components
+
+Use hooks for async operations:
+
+```typescript
+"use client";
+const [data, setData] = useState(null);
+useEffect(() => {
+    fetchData().then(setData);
+}, []);
+```
+
+## Error Handling
+
+- Use try-catch for async operations
+- Return proper HTTP status codes from route handlers
+- Display user-friendly error messages in UI
+- Log errors to console for debugging
+
+## Type Safety Best Practices
+
+- Avoid `any` type - use `unknown` if truly dynamic
+- Define interfaces/types for component props
+- Use Zod schemas for runtime validation (see
+  [app/mcp/route.ts](mdc:app/mcp/route.ts))
+- Leverage TypeScript's strict null checks

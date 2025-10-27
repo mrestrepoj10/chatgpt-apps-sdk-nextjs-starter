@@ -1,0 +1,179 @@
+---
+globs: **/auth/**,**/oauth/**,middleware.ts,lib/supabase/**
+---
+
+# Authentication and Authorization Patterns
+
+## Supabase Authentication Architecture
+
+### Client Types
+
+Three Supabase client types are used depending on context:
+
+1. **Browser Client** ([lib/supabase/client.ts](mdc:lib/supabase/client.ts))
+   - Use in Client Components
+   - Automatic session management with cookies
+   - Cannot access service role functions
+
+2. **Server Client** ([lib/supabase/server.ts](mdc:lib/supabase/server.ts))
+   - Use in Server Components, Route Handlers, Middleware
+   - Cookie-based session management via `@supabase/ssr`
+   - Regular user permissions
+
+3. **Service Client** ([lib/supabase/server.ts](mdc:lib/supabase/server.ts))
+   - Admin operations only (bypasses RLS)
+   - Used for token verification in
+     [lib/supabase/auth.ts](mdc:lib/supabase/auth.ts)
+   - Never expose service role key to client
+
+### Which Client to Use
+
+- **Client Component + user actions**: Browser client (`createClient()`)
+- **Server Component + user data**: Server client (`createServerClient()`)
+- **API route + bearer token**: Service client (`createServiceClient()`)
+- **Middleware + session check**: Server client with cookie handling
+
+## Middleware Protection ([middleware.ts](mdc:middleware.ts))
+
+### Public Routes
+
+Routes that don't require authentication:
+
+- `/auth/login`, `/auth/register`, `/auth/callback`
+- `/oauth/consent`
+- `/_next/*` (Next.js static assets)
+- `/favicon.ico`, `/public/*`
+- `/mcp` (optional - can be protected if needed)
+
+### Protected Routes
+
+All other routes require valid Supabase session. Middleware:
+
+1. Checks for OPTIONS request (CORS preflight) - returns 204
+2. Checks if route is public - allows through with CORS headers
+3. Creates Supabase server client with cookie handling
+4. Gets user session via `supabase.auth.getSession()`
+5. Redirects to `/auth/login` if no session
+
+### Preserving Query Parameters
+
+Middleware preserves `authorization_id` during redirects for OAuth flow
+continuity.
+
+## OAuth 2.1 Flow
+
+### 1. Login Page ([app/auth/login/page.tsx](mdc:app/auth/login/page.tsx))
+
+- Email/password authentication via Supabase
+- Preserves `authorization_id` from query params
+- Redirects to consent screen after successful login
+- Shows error messages for failed attempts
+- Modern UI with dark mode support
+
+### 2. Registration Page ([app/auth/register/page.tsx](mdc:app/auth/register/page.tsx))
+
+- User signup with email confirmation
+- Password validation (min 6 chars, matching confirmation)
+- Assigns default scopes in user_metadata: `['profile:read', 'app:access']`
+- Displays success screen for email confirmation step
+
+### 3. Consent Screen ([app/oauth/consent/page.tsx](mdc:app/oauth/consent/page.tsx))
+
+- Fetches authorization details via `fetchAuthorizationDetails()`
+- Displays client info and requested scopes with descriptions
+- Allow/Deny buttons for user decision
+- Stores consent in `oauth_consents` table (graceful degradation if missing)
+- Validates session before showing consent
+
+### 4. Callback Handler ([app/auth/callback/page.tsx](mdc:app/auth/callback/page.tsx))
+
+- Exchanges authorization code for session
+- Handles OAuth callback from Supabase
+- Error handling for failed authentication
+- Redirects to homepage after successful auth
+
+## Bearer Token Authentication
+
+### API Route Protection
+
+Protected API routes (e.g., [app/api/user/route.ts](mdc:app/api/user/route.ts))
+should:
+
+1. Extract bearer token from Authorization header
+2. Verify token with `verifyBearerToken(token)` from
+   [lib/supabase/auth.ts](mdc:lib/supabase/auth.ts)
+3. Validate required scopes with `validateScopes(token, requiredScopes)`
+4. Return proper status codes:
+   - 401 Unauthorized - Invalid/missing token
+   - 403 Forbidden - Insufficient permissions
+   - 500 Internal Server Error - Server errors
+
+### Auth Helper Functions ([lib/supabase/auth.ts](mdc:lib/supabase/auth.ts))
+
+- `verifyBearerToken(token)` - Validates access token, returns user object
+- `extractScopesFromToken(token)` - Gets scopes from user metadata
+- `validateScopes(token, requiredScopes[])` - Checks scope permissions
+- `fetchAuthorizationDetails(authId, token)` - Gets OAuth authorization data
+- `submitConsentDecision(authId, token, approved)` - Processes user consent
+
+## Scope Management
+
+### Default Scopes
+
+Assigned during registration in user_metadata:
+
+- `profile:read` - View profile information
+- `app:access` - Access the application
+
+### Additional Scopes (customizable)
+
+- `tasks:read` - Read tasks and projects
+- `tasks:write` - Create and update tasks
+
+### Storing Scopes
+
+Scopes are stored in `user.user_metadata.scopes` array. For production,
+consider:
+
+- Dedicated scopes table with user relationship
+- Scope expiration and refresh logic
+- Role-based access control (RBAC)
+
+## Session Management
+
+### Client-Side
+
+```typescript
+const supabase = createClient();
+const { data: { user } } = await supabase.auth.getUser();
+const { data: { session } } = await supabase.auth.getSession();
+```
+
+### Logout
+
+```typescript
+await supabase.auth.signOut();
+router.push("/auth/login");
+router.refresh(); // Clear Next.js cache
+```
+
+### Auth State Listening
+
+```typescript
+const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+        // Handle auth changes
+    },
+);
+// Remember to unsubscribe on cleanup
+```
+
+## Security Best Practices
+
+1. **Never expose service role key** to client-side code
+2. **Use HTTP-only cookies** for session storage (Supabase default)
+3. **Implement Row Level Security (RLS)** for database queries
+4. **Validate bearer tokens** on every protected API route
+5. **Check scopes** before granting access to resources
+6. **Preserve authorization_id** throughout OAuth flow
+7. **Add CORS headers** for cross-origin iframe requests

@@ -1,0 +1,272 @@
+---
+globs: **/mcp/**
+---
+
+# Model Context Protocol (MCP) Server Patterns
+
+## MCP Handler Setup ([app/mcp/route.ts](mdc:app/mcp/route.ts))
+
+### Basic Structure
+
+```typescript
+import { createMcpHandler } from "mcp-handler";
+import { z } from "zod";
+
+const handler = createMcpHandler(async (server) => {
+  // Register resources and tools
+  server.registerResource(...);
+  server.registerTool(...);
+});
+
+export const GET = handler;
+export const POST = handler;
+```
+
+### Why GET and POST?
+
+- **GET**: Used by ChatGPT for resource fetching (HTML widgets)
+- **POST**: Used for MCP protocol communication (tool invocations)
+
+## Tool Registration
+
+### Tool Structure
+
+```typescript
+server.registerTool(
+  toolId: string,
+  {
+    title: string,
+    description: string,
+    inputSchema: ZodSchema, // Zod schema for validation
+    _meta: OpenAIMetadata, // OpenAI-specific metadata
+  },
+  handler: async (input) => {
+    return {
+      content: [...], // Standard MCP content
+      structuredContent: {...}, // Structured data
+      _meta: OpenAIMetadata, // OpenAI metadata in response
+    };
+  }
+);
+```
+
+### OpenAI-Specific Metadata
+
+Tools that produce widgets must include:
+
+```typescript
+{
+  "openai/outputTemplate": widget.templateUri, // Links to registered resource
+  "openai/toolInvocation/invoking": "Loading...", // Loading state text
+  "openai/toolInvocation/invoked": "Loaded", // Completion state text
+  "openai/widgetAccessible": false, // Widget visibility to user
+  "openai/resultCanProduceWidget": true, // Enable widget rendering
+}
+```
+
+## Resource Registration
+
+### Resource Structure
+
+```typescript
+server.registerResource(
+  resourceId: string,
+  templateUri: string, // e.g., "ui://widget/content-template.html"
+  {
+    title: string,
+    description: string,
+    mimeType: "text/html+skybridge", // Required for HTML widgets
+    _meta: {
+      "openai/widgetDescription": string,
+      "openai/widgetPrefersBorder": boolean,
+    },
+  },
+  handler: async (uri) => ({
+    contents: [
+      {
+        uri: uri.href,
+        mimeType: "text/html+skybridge",
+        text: `<html>${htmlContent}</html>`, // Full HTML document
+        _meta: {
+          "openai/widgetDescription": string,
+          "openai/widgetPrefersBorder": boolean,
+          "openai/widgetDomain": string, // Displayed domain in ChatGPT
+        },
+      },
+    ],
+  })
+);
+```
+
+### Resource MIME Types
+
+- **text/html+skybridge**: HTML widgets rendered in iframe
+- **text/plain**: Plain text content
+- **application/json**: JSON data
+
+## Fetching App HTML for Widgets
+
+### Pattern for Rendering Next.js Pages
+
+```typescript
+const getAppsSdkCompatibleHtml = async (baseUrl: string, path: string) => {
+  const result = await fetch(`${baseUrl}${path}`);
+  return await result.text();
+};
+
+// Fetch homepage HTML
+const html = await getAppsSdkCompatibleHtml(baseURL, "/");
+
+// Use in resource
+text: `<html>${html}</html>`,
+```
+
+This fetches the fully rendered HTML from your Next.js app, including:
+
+- Hydrated React components
+- Inline styles and scripts
+- SDK bootstrap code from [app/layout.tsx](mdc:app/layout.tsx)
+
+## Tool and Resource Cross-Linking
+
+### Template URI Pattern
+
+Resources are identified by URI scheme:
+
+```typescript
+const templateUri = "ui://widget/content-template.html";
+```
+
+Tools reference resources via `openai/outputTemplate`:
+
+```typescript
+_meta: {
+  "openai/outputTemplate": templateUri, // Must match registered resource
+}
+```
+
+This tells ChatGPT to fetch and render the resource HTML when the tool is
+invoked.
+
+## Input Validation with Zod
+
+### Schema Definition
+
+```typescript
+import { z } from "zod";
+
+const inputSchema = {
+    name: z.string().describe("The name of the user to display"),
+    age: z.number().optional().describe("Optional age of the user"),
+};
+```
+
+### Benefits
+
+- Runtime validation of tool inputs
+- Auto-generated TypeScript types
+- Clear parameter descriptions for ChatGPT
+- Type-safe handler implementation
+
+## Structured Content Pattern
+
+### Return Format
+
+```typescript
+return {
+  content: [
+    {
+      type: "text",
+      text: "Display text for ChatGPT",
+    },
+  ],
+  structuredContent: {
+    // Structured data accessible in widget via useWidgetProps()
+    name: name,
+    timestamp: new Date().toISOString(),
+    data: {...},
+  },
+  _meta: widgetMeta(contentWidget),
+};
+```
+
+### Accessing in Widget
+
+Client components can access structured content via custom hooks:
+
+```typescript
+import { useWidgetProps } from "@/app/hooks";
+
+const toolOutput = useWidgetProps<{
+    name?: string;
+    result?: { structuredContent?: { name?: string } };
+}>();
+
+const name = toolOutput?.result?.structuredContent?.name;
+```
+
+## Widget Configuration Type
+
+### Define Widget Structure
+
+```typescript
+type ContentWidget = {
+    id: string; // Tool ID
+    title: string; // Display title
+    templateUri: string; // Resource URI (must match registered resource)
+    invoking: string; // Loading message
+    invoked: string; // Success message
+    html: string; // HTML content
+    description: string; // Widget description
+    widgetDomain: string; // Displayed domain in ChatGPT UI
+};
+```
+
+### Widget Metadata Helper
+
+```typescript
+function widgetMeta(widget: ContentWidget) {
+    return {
+        "openai/outputTemplate": widget.templateUri,
+        "openai/toolInvocation/invoking": widget.invoking,
+        "openai/toolInvocation/invoked": widget.invoked,
+        "openai/widgetAccessible": false,
+        "openai/resultCanProduceWidget": true,
+    } as const;
+}
+```
+
+## MCP Endpoint Security
+
+### Current Configuration
+
+The `/mcp` endpoint is **public** by default in
+[middleware.ts](mdc:middleware.ts) to allow ChatGPT access.
+
+### Protecting MCP Endpoint (Optional)
+
+To require authentication:
+
+1. Remove `/mcp` from `publicRoutes` in middleware
+2. ChatGPT will need to provide bearer token in requests
+3. Consider adding API key validation for extra security
+
+## Testing MCP Locally
+
+1. Start dev server: `pnpm dev`
+2. Access MCP endpoint: `http://localhost:3000/mcp`
+3. Test with MCP inspector tools
+4. Verify widget rendering in ChatGPT (requires developer mode)
+
+## Deployment Considerations
+
+- Ensure `NEXT_PUBLIC_APP_URL` is set to production URL
+- Verify `assetPrefix` in [next.config.ts](mdc:next.config.ts) uses correct base
+  URL
+- Test widget rendering in production iframe context
+- Monitor MCP endpoint performance and rate limits
+
+## Official Documentation
+
+- [OpenAI Apps SDK - MCP Server Guide](https://developers.openai.com/apps-sdk/build/mcp-server)
+- [Model Context Protocol Specification](https://modelcontextprotocol.io)

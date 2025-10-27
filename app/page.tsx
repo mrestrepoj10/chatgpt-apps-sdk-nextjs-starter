@@ -2,6 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
 import {
   useWidgetProps,
   useMaxHeight,
@@ -11,6 +15,11 @@ import {
 } from "./hooks";
 
 export default function Home() {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const supabase = createClient();
+
   const toolOutput = useWidgetProps<{
     name?: string;
     result?: { structuredContent?: { name?: string } };
@@ -21,6 +30,31 @@ export default function Home() {
   const isChatGptApp = useIsChatGptApp();
 
   const name = toolOutput?.result?.structuredContent?.name || toolOutput?.name;
+
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      setLoading(false);
+    };
+
+    getUser();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [supabase.auth]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/auth/login");
+    router.refresh();
+  };
 
   return (
     <div
@@ -52,7 +86,43 @@ export default function Home() {
           </svg>
         </button>
       )}
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
+      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start w-full max-w-4xl">
+        {/* User Info Card */}
+        {user && (
+          <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg px-4 py-3 w-full">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <svg
+                  className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-green-900 dark:text-green-100 font-medium">
+                    Authenticated as: {user.email}
+                  </p>
+                  <p className="text-xs text-green-700 dark:text-green-300">
+                    User ID: {user.id.substring(0, 8)}...
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleLogout}
+                className="text-sm text-green-700 dark:text-green-300 hover:text-green-900 dark:hover:text-green-100 font-medium underline"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        )}
+
         {!isChatGptApp && (
           <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-3 w-full">
             <div className="flex items-center gap-3">
@@ -99,6 +169,9 @@ export default function Home() {
         <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
           <li className="mb-2 tracking-[-.01em]">
             Welcome to the ChatGPT Apps SDK Next.js Starter
+          </li>
+          <li className="mb-2 tracking-[-.01em]">
+            🔒 Protected with Supabase OAuth Authentication
           </li>
           <li className="mb-2 tracking-[-.01em]">
             Name returned from tool call: {name ?? "..."}

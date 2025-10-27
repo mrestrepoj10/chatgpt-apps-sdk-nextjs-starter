@@ -1,0 +1,408 @@
+---
+globs: lib/supabase/**
+---
+
+# Supabase Integration Patterns
+
+## Client Utilities Overview
+
+### File Structure
+
+- [lib/supabase/client.ts](mdc:lib/supabase/client.ts) - Browser client for
+  Client Components
+- [lib/supabase/server.ts](mdc:lib/supabase/server.ts) - Server clients for SSR
+  and admin ops
+- [lib/supabase/auth.ts](mdc:lib/supabase/auth.ts) - Authentication helper
+  functions
+
+## Browser Client ([lib/supabase/client.ts](mdc:lib/supabase/client.ts))
+
+### Usage
+
+```typescript
+import { createClient } from "@/lib/supabase/client";
+
+const supabase = createClient();
+```
+
+### When to Use
+
+- Client Components ("use client" directive)
+- User-initiated actions (login, logout, data mutations)
+- Real-time subscriptions
+- Auth state listening
+
+### Key Features
+
+- Automatic session refresh
+- HTTP-only cookie storage
+- Browser-based auth flows
+- Built-in PKCE support
+
+### Example Operations
+
+```typescript
+// Get current user
+const { data: { user } } = await supabase.auth.getUser();
+
+// Sign in
+const { error } = await supabase.auth.signInWithPassword({
+    email: "user@example.com",
+    password: "password",
+});
+
+// Sign out
+await supabase.auth.signOut();
+
+// Query data (respects RLS)
+const { data, error } = await supabase
+    .from("table_name")
+    .select("*")
+    .eq("user_id", user.id);
+
+// Listen to auth changes
+const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    (event, session) => {
+        console.log(event, session);
+    },
+);
+```
+
+## Server Client ([lib/supabase/server.ts](mdc:lib/supabase/server.ts))
+
+### Usage
+
+```typescript
+import { createServerClient } from "@/lib/supabase/server";
+
+const supabase = createServerClient();
+```
+
+### When to Use
+
+- Server Components
+- API Route Handlers
+- Middleware with session validation
+- Server-side data fetching
+
+### Cookie Handling Pattern
+
+The server client implements cookie handling for SSR:
+
+```typescript
+import { cookies } from "next/headers";
+
+const cookieStore = await cookies();
+
+const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+        cookies: {
+            getAll() {
+                return cookieStore.getAll();
+            },
+            setAll(cookiesToSet) {
+                try {
+                    cookiesToSet.forEach(({ name, value, options }) => {
+                        cookieStore.set(name, value, options);
+                    });
+                } catch {
+                    // Handle cookie setting errors
+                }
+            },
+        },
+    },
+);
+```
+
+### Example Operations
+
+```typescript
+// In Server Component
+export default async function Page() {
+    const supabase = createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect("/auth/login");
+    }
+
+    const { data } = await supabase
+        .from("table_name")
+        .select("*")
+        .eq("user_id", user.id);
+
+    return <div>{/* Render data */}</div>;
+}
+```
+
+## Service Client ([lib/supabase/server.ts](mdc:lib/supabase/server.ts))
+
+### Usage
+
+```typescript
+import { createServiceClient } from "@/lib/supabase/server";
+
+const supabase = createServiceClient();
+```
+
+### When to Use
+
+- Admin operations that bypass RLS
+- Bearer token verification
+- User management operations
+- Consent/authorization record storage
+- Server-side only operations
+
+### Security Warning
+
+⚠️ **NEVER** expose service role key to client-side code. This client bypasses
+Row Level Security and has full database access.
+
+### Example Operations
+
+```typescript
+// Verify bearer token
+const { data, error } = await supabase.auth.getUser(accessToken);
+
+// Admin query (bypasses RLS)
+const { data } = await supabase
+    .from("oauth_consents")
+    .insert({ user_id, authorization_id, approved: true });
+
+// Update user metadata
+const { error } = await supabase.auth.admin.updateUserById(
+    userId,
+    { user_metadata: { scopes: ["profile:read", "app:access"] } },
+);
+```
+
+## Authentication Helpers ([lib/supabase/auth.ts](mdc:lib/supabase/auth.ts))
+
+### verifyBearerToken(token: string)
+
+Validates an access token and returns the user object.
+
+**Usage:**
+
+```typescript
+import { verifyBearerToken } from "@/lib/supabase/auth";
+
+const user = await verifyBearerToken(token);
+if (!user) {
+    return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+}
+```
+
+**Returns:** `User | null`
+
+### extractScopesFromToken(token: string)
+
+Extracts scopes from user metadata associated with the token.
+
+**Usage:**
+
+```typescript
+import { extractScopesFromToken } from "@/lib/supabase/auth";
+
+const scopes = await extractScopesFromToken(token);
+// Returns: ["profile:read", "app:access"]
+```
+
+**Returns:** `string[]`
+
+**Note:** Scopes are stored in `user.user_metadata.scopes` by default. Customize
+based on your schema.
+
+### validateScopes(token: string, requiredScopes: string[])
+
+Checks if a token has all required scopes.
+
+**Usage:**
+
+```typescript
+import { validateScopes } from "@/lib/supabase/auth";
+
+const hasPermission = await validateScopes(token, [
+    "profile:read",
+    "app:access",
+]);
+if (!hasPermission) {
+    return NextResponse.json({ error: "Insufficient permissions" }, {
+        status: 403,
+    });
+}
+```
+
+**Returns:** `boolean`
+
+### fetchAuthorizationDetails(authorizationId: string, accessToken: string)
+
+Fetches OAuth authorization details for consent screen.
+
+**Usage:**
+
+```typescript
+import { fetchAuthorizationDetails } from "@/lib/supabase/auth";
+
+const authDetails = await fetchAuthorizationDetails(authId, token);
+// Returns: { id, client: { name, description }, scopes, user_id }
+```
+
+**Returns:** `AuthorizationDetails | null`
+
+**Note:** Current implementation returns mock data. Customize based on your
+OAuth setup.
+
+### submitConsentDecision(authId: string, token: string, approved: boolean)
+
+Processes user's consent decision and stores in database.
+
+**Usage:**
+
+```typescript
+import { submitConsentDecision } from "@/lib/supabase/auth";
+
+const result = await submitConsentDecision(authId, token, true);
+if (result.error) {
+    // Handle error
+} else {
+    // Redirect to result.redirect_url
+}
+```
+
+**Returns:** `{ redirect_url?: string; error?: string }`
+
+**Database:** Stores consent in `oauth_consents` table. Handles missing table
+gracefully.
+
+## Environment Variables
+
+### Required Variables
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
+
+### Variable Usage
+
+- **NEXT_PUBLIC_** prefix: Exposed to browser (safe)
+- **No prefix**: Server-side only (secret)
+
+### Getting Keys
+
+1. Go to Supabase Dashboard
+2. Navigate to Settings → API
+3. Copy keys from "Project API keys" section
+
+## Row Level Security (RLS)
+
+### Enable RLS on Tables
+
+```sql
+ALTER TABLE table_name ENABLE ROW LEVEL SECURITY;
+```
+
+### Example RLS Policies
+
+```sql
+-- Users can only read their own data
+CREATE POLICY "Users can read own data"
+ON table_name FOR SELECT
+USING (auth.uid() = user_id);
+
+-- Users can insert their own data
+CREATE POLICY "Users can insert own data"
+ON table_name FOR INSERT
+WITH CHECK (auth.uid() = user_id);
+```
+
+### Bypassing RLS
+
+Only the service client (`createServiceClient()`) bypasses RLS. Use sparingly
+and carefully.
+
+## Real-Time Subscriptions
+
+### Subscribe to Changes
+
+```typescript
+const supabase = createClient();
+
+const subscription = supabase
+    .channel("table_changes")
+    .on("postgres_changes", {
+        event: "*", // INSERT, UPDATE, DELETE, or *
+        schema: "public",
+        table: "table_name",
+    }, (payload) => {
+        console.log("Change received!", payload);
+    })
+    .subscribe();
+
+// Cleanup
+return () => {
+    subscription.unsubscribe();
+};
+```
+
+## Error Handling
+
+### Check for Errors
+
+```typescript
+const { data, error } = await supabase.from("table").select();
+
+if (error) {
+    console.error("Database error:", error);
+    // Handle error appropriately
+}
+
+// data is guaranteed to exist if no error
+```
+
+### Auth Errors
+
+```typescript
+const { error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+});
+
+if (error) {
+    // Common error codes:
+    // - "invalid_credentials"
+    // - "email_not_confirmed"
+    // - "user_not_found"
+    console.error(error.message);
+}
+```
+
+## Best Practices
+
+1. **Use the right client**:
+   - Browser client for client components
+   - Server client for server components
+   - Service client for admin operations only
+
+2. **Never expose service role key** to client-side code
+
+3. **Always check for errors** before using data
+
+4. **Implement RLS policies** on all tables
+
+5. **Clean up subscriptions** in useEffect cleanup
+
+6. **Use TypeScript types** for type-safe queries
+
+7. **Handle cookie errors** gracefully in server client
+
+8. **Validate bearer tokens** on all protected API routes
+
+9. **Store sensitive data** in user_metadata, not app_metadata (RLS applies)
+
+10. **Test auth flows** thoroughly before production deployment

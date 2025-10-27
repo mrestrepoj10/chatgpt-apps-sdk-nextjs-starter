@@ -1,0 +1,364 @@
+---
+description: Deployment and production configuration guidelines
+---
+
+# Deployment and Production Configuration
+
+## Deployment Platform
+
+### Vercel (Recommended)
+
+This project is optimized for Vercel deployment with automatic configuration.
+
+**Deploy Button:**
+
+```markdown
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/vercel-labs/chatgpt-apps-sdk-nextjs-starter)
+```
+
+**Automatic Features:**
+
+- Serverless function deployment for API routes
+- Edge middleware execution
+- Automatic HTTPS
+- Production and preview environments
+- CDN for static assets
+
+## Environment Variables
+
+### Required Variables
+
+Must be set in Vercel project settings or `.env.local`:
+
+```env
+# Supabase Configuration
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+
+# Application URL
+NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
+```
+
+### Vercel Automatic Variables
+
+Vercel provides these automatically (do not set manually):
+
+- `VERCEL_URL` - Deployment URL
+- `VERCEL_PROJECT_PRODUCTION_URL` - Production URL
+- `VERCEL_BRANCH_URL` - Branch deployment URL
+- `VERCEL_GIT_COMMIT_SHA` - Commit SHA
+
+### Using Vercel Variables
+
+[baseUrl.ts](mdc:baseUrl.ts) automatically determines the correct URL:
+
+```typescript
+export const baseURL = process.env.NEXT_PUBLIC_APP_URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : process.env.VERCEL_BRANCH_URL
+        ? `https://${process.env.VERCEL_BRANCH_URL}`
+        : "http://localhost:3000");
+```
+
+## Pre-Deployment Checklist
+
+### 1. Supabase Configuration
+
+- [ ] Create production Supabase project
+- [ ] Copy API keys to Vercel environment variables
+- [ ] Add production URL to Supabase redirect URLs
+- [ ] Update site URL in Supabase authentication settings
+- [ ] Enable email confirmation for production
+- [ ] Set up custom SMTP for reliable email delivery
+- [ ] Review and test Row Level Security (RLS) policies
+- [ ] Create `oauth_consents` table (optional but recommended)
+
+### 2. Environment Configuration
+
+- [ ] Set all required environment variables in Vercel
+- [ ] Verify `NEXT_PUBLIC_APP_URL` matches production domain
+- [ ] Keep `SUPABASE_SERVICE_ROLE_KEY` secret (never commit)
+- [ ] Test environment variables in preview deployment
+
+### 3. Security Review
+
+- [ ] Ensure service role key is server-side only
+- [ ] Verify RLS policies on all database tables
+- [ ] Check CORS configuration in [middleware.ts](mdc:middleware.ts)
+- [ ] Review public vs protected routes
+- [ ] Consider protecting `/mcp` endpoint if needed
+- [ ] Enable rate limiting on auth endpoints (recommended)
+
+### 4. Code Quality
+
+- [ ] No TypeScript errors: `pnpm build`
+- [ ] No linter warnings
+- [ ] Test authentication flow end-to-end
+- [ ] Test widget rendering in ChatGPT iframe
+- [ ] Verify client-side navigation works
+- [ ] Test logout and session cleanup
+
+### 5. Database Setup
+
+- [ ] Run migrations: `supabase/migrations/*.sql`
+- [ ] Seed data if needed
+- [ ] Set up database backups
+- [ ] Configure connection pooling if high traffic expected
+
+## Build Configuration
+
+### Next.js Build
+
+```bash
+pnpm build
+```
+
+This runs Next.js build with Turbopack:
+
+- Optimizes code and assets
+- Generates static pages
+- Compiles TypeScript
+- Validates route structure
+
+### Asset Prefix
+
+[next.config.ts](mdc:next.config.ts) sets `assetPrefix` to ensure assets load
+correctly from iframe:
+
+```typescript
+const nextConfig: NextConfig = {
+    assetPrefix: baseURL,
+};
+```
+
+**Critical:** This prevents 404s on `/_next/static/*` files when rendered in
+ChatGPT iframe.
+
+## Deployment Process
+
+### Vercel Deployment Steps
+
+1. **Connect Repository:**
+   - Link GitHub/GitLab/Bitbucket repository
+   - Grant Vercel access
+
+2. **Configure Project:**
+   - Framework: Next.js (auto-detected)
+   - Root directory: `./` (default)
+   - Build command: `pnpm build` (auto-detected)
+   - Output directory: `.next` (auto-detected)
+
+3. **Set Environment Variables:**
+   - Add all required variables from checklist
+   - Variables apply to production and preview
+
+4. **Deploy:**
+   - Push to main branch for production
+   - Push to other branches for preview deployments
+
+### Manual Deployment (Alternative)
+
+```bash
+# Install Vercel CLI
+npm i -g vercel
+
+# Login
+vercel login
+
+# Deploy to production
+vercel --prod
+
+# Deploy to preview
+vercel
+```
+
+## Supabase Production Setup
+
+### Redirect URLs Configuration
+
+Add these URLs in Supabase Dashboard → Authentication → URL Configuration:
+
+**Site URL:**
+
+```
+https://your-app.vercel.app
+```
+
+**Redirect URLs:**
+
+```
+https://your-app.vercel.app/auth/callback
+https://your-app.vercel.app/auth/login
+https://your-app.vercel.app/**
+```
+
+### Email Templates
+
+Customize email templates in Supabase Dashboard → Authentication → Email
+Templates:
+
+- Confirmation email
+- Password reset email
+- Magic link email
+- Change email confirmation
+
+Update URLs to use production domain.
+
+## ChatGPT Connection
+
+### Adding MCP Server to ChatGPT
+
+1. Deploy app to production
+2. Note the MCP endpoint: `https://your-app.vercel.app/mcp`
+3. In ChatGPT, go to **Settings → Connectors → Create**
+4. Add MCP server URL
+5. Test tool invocation and widget rendering
+
+**Requirements:**
+
+- ChatGPT developer mode access
+- Production HTTPS URL (Vercel provides automatically)
+- MCP endpoint must be accessible
+
+**Connection Guide:**
+[OpenAI Apps SDK - Connection Guide](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt)
+
+## Monitoring and Logging
+
+### Vercel Logs
+
+Access logs in Vercel Dashboard:
+
+- Function logs for API routes
+- Edge logs for middleware
+- Build logs for deployment debugging
+- Real-time log streaming
+
+### Error Tracking (Recommended)
+
+Consider adding error tracking service:
+
+- Sentry
+- LogRocket
+- Datadog
+- New Relic
+
+### Performance Monitoring
+
+Vercel provides built-in analytics:
+
+- Core Web Vitals
+- Page load times
+- API route performance
+- Edge middleware latency
+
+## Production Best Practices
+
+### 1. Security
+
+- Rotate service role key if ever exposed
+- Use Vercel environment variable secrets
+- Enable Vercel authentication for preview deployments
+- Set up Supabase database backups
+- Review and test RLS policies regularly
+
+### 2. Performance
+
+- Enable Vercel Edge Caching where appropriate
+- Use Next.js Image optimization
+- Implement database query optimization
+- Consider adding Redis for rate limiting
+- Monitor API route response times
+
+### 3. Reliability
+
+- Set up health check endpoint
+- Configure alerts for 500 errors
+- Test OAuth flow regularly
+- Monitor Supabase connection limits
+- Set up database connection pooling
+
+### 4. Maintenance
+
+- Keep dependencies updated
+- Review Vercel deployment logs weekly
+- Monitor Supabase quota usage
+- Test widget rendering after updates
+- Maintain up-to-date documentation
+
+## Troubleshooting Production Issues
+
+### Asset 404 Errors
+
+**Symptom:** `/_next/static/*` files return 404 in iframe\
+**Fix:** Verify `assetPrefix` in [next.config.ts](mdc:next.config.ts) uses
+correct base URL
+
+### Authentication Loops
+
+**Symptom:** Endless redirect between login and protected pages\
+**Fix:**
+
+- Clear cookies
+- Verify redirect URLs in Supabase match exactly
+- Check middleware logic in [middleware.ts](mdc:middleware.ts)
+
+### Session Not Persisting
+
+**Symptom:** User logged in but middleware redirects to login\
+**Fix:**
+
+- Verify cookie domain settings
+- Check Supabase redirect URLs
+- Test with browser dev tools network tab
+
+### CORS Errors in ChatGPT
+
+**Symptom:** Failed to fetch resources from iframe\
+**Fix:**
+
+- Verify CORS headers in [middleware.ts](mdc:middleware.ts)
+- Check OPTIONS request handling
+- Test MCP endpoint accessibility
+
+### Widget Not Rendering
+
+**Symptom:** ChatGPT shows error instead of widget\
+**Fix:**
+
+- Verify MCP metadata is correct in [app/mcp/route.ts](mdc:app/mcp/route.ts)
+- Check resource URI matches tool `openai/outputTemplate`
+- Test HTML resource directly in browser
+- Verify SDK bootstrap in [app/layout.tsx](mdc:app/layout.tsx)
+
+## Scaling Considerations
+
+### High Traffic
+
+- Upgrade Supabase plan for higher connection limits
+- Add database read replicas
+- Implement caching with Vercel KV or Redis
+- Consider Edge Functions for global distribution
+
+### Database Optimization
+
+- Add indexes on frequently queried columns
+- Use database connection pooling (PgBouncer)
+- Implement query result caching
+- Monitor slow query log
+
+### Cost Optimization
+
+- Use Vercel Edge Functions where possible
+- Optimize images with Next.js Image component
+- Implement incremental static regeneration (ISR) for static content
+- Monitor function execution time and memory usage
+
+## Documentation References
+
+- [Vercel Documentation](https://vercel.com/docs)
+- [Next.js Deployment](https://nextjs.org/docs/deployment)
+- [Supabase Production Checklist](https://supabase.com/docs/guides/platform/going-into-prod)
+- [OpenAI Apps SDK Deployment](https://developers.openai.com/apps-sdk/deploy)

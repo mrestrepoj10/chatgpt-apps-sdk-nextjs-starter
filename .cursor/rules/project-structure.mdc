@@ -1,0 +1,82 @@
+---
+alwaysApply: true
+---
+
+# ChatGPT Apps SDK Next.js Starter - Project Structure
+
+This is a Next.js 15 application integrating the ChatGPT Apps SDK with MCP
+(Model Context Protocol), protected by Supabase OAuth 2.1 authentication.
+
+## Core Architecture
+
+### Main Entry Points
+
+- [app/page.tsx](mdc:app/page.tsx) - Protected homepage with user authentication
+  display
+- [app/layout.tsx](mdc:app/layout.tsx) - Root layout with NextChatSDKBootstrap
+  for iframe compatibility
+- [app/mcp/route.ts](mdc:app/mcp/route.ts) - MCP server exposing tools and
+  resources to ChatGPT
+- [middleware.ts](mdc:middleware.ts) - Authentication checks and CORS handling
+
+### Key Directories
+
+- `app/auth/` - Authentication pages (login, register, callback)
+- `app/oauth/` - OAuth consent flow
+- `app/api/` - Protected API routes with bearer token validation
+- `app/hooks/` - Custom React hooks for ChatGPT SDK integration
+- `lib/supabase/` - Supabase client utilities and auth helpers
+
+## Technology Stack
+
+- **Framework**: Next.js 15.5.4 (App Router with Turbopack)
+- **Runtime**: React 19.1.0
+- **Authentication**: Supabase SSR (@supabase/ssr, @supabase/supabase-js)
+- **MCP**: @modelcontextprotocol/sdk, mcp-handler
+- **Styling**: Tailwind CSS 4 + PostCSS
+- **Type Safety**: TypeScript 5 with strict mode
+- **Validation**: Zod 3.24.2
+- **Package Manager**: pnpm 10.14.0
+
+## Important Patterns
+
+### Asset Loading
+
+[next.config.ts](mdc:next.config.ts) uses `assetPrefix` to ensure static assets
+load correctly from the iframe origin. This is **critical** for preventing 404s
+on `/_next/` files.
+
+### SDK Bootstrap
+
+[app/layout.tsx](mdc:app/layout.tsx) includes `<NextChatSDKBootstrap>` which
+patches browser APIs:
+
+- `history.pushState/replaceState` - Prevents full-origin URLs
+- `window.fetch` - Rewrites same-origin requests to correct base URL
+- HTML attribute observer - Prevents ChatGPT from modifying root element
+
+### Authentication Flow
+
+1. User access → Middleware check → Redirect to login if unauthenticated
+2. Login → Consent screen → Approval → Session creation → Access granted
+3. All protected routes require valid Supabase session via middleware
+
+### MCP Integration
+
+- Tools registered with OpenAI-specific metadata (`openai/outputTemplate`,
+  `openai/widgetAccessible`, etc.)
+- Resources serve HTML content for iframe rendering
+- Tools and resources cross-linked via `templateUri`
+
+## Environment Variables
+
+Required in `.env.local`:
+
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anonymous key
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key (server-side only)
+- `NEXT_PUBLIC_APP_URL` - Application base URL
+
+## Path Aliases
+
+Uses `@/*` to reference workspace root via [tsconfig.json](mdc:tsconfig.json)

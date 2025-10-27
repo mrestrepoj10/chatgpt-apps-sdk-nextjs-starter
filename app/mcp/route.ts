@@ -30,6 +30,7 @@ function widgetMeta(widget: ContentWidget) {
 
 const handler = createMcpHandler(async (server) => {
   const html = await getAppsSdkCompatibleHtml(baseURL, "/");
+  const pizzaListHtml = await getAppsSdkCompatibleHtml(baseURL, "/pizza-list");
 
   const contentWidget: ContentWidget = {
     id: "show_content",
@@ -41,6 +42,18 @@ const handler = createMcpHandler(async (server) => {
     description: "Displays the homepage content",
     widgetDomain: "https://nextjs.org/docs",
   };
+  
+  const pizzaListWidget: ContentWidget = {
+    id: "pizza_list",
+    title: "Pizza List",
+    templateUri: "ui://widget/pizza-list-template.html",
+    invoking: "Loading pizza list...",
+    invoked: "Pizza list loaded",
+    html: pizzaListHtml,
+    description: "Displays the National Best Pizza List with rankings and ratings",
+    widgetDomain: baseURL,
+  };
+
   server.registerResource(
     "content-widget",
     contentWidget.templateUri,
@@ -63,6 +76,34 @@ const handler = createMcpHandler(async (server) => {
             "openai/widgetDescription": contentWidget.description,
             "openai/widgetPrefersBorder": true,
             "openai/widgetDomain": contentWidget.widgetDomain,
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerResource(
+    "pizza-list-widget",
+    pizzaListWidget.templateUri,
+    {
+      title: pizzaListWidget.title,
+      description: pizzaListWidget.description,
+      mimeType: "text/html+skybridge",
+      _meta: {
+        "openai/widgetDescription": pizzaListWidget.description,
+        "openai/widgetPrefersBorder": true,
+      },
+    },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "text/html+skybridge",
+          text: `<html>${pizzaListWidget.html}</html>`,
+          _meta: {
+            "openai/widgetDescription": pizzaListWidget.description,
+            "openai/widgetPrefersBorder": true,
+            "openai/widgetDomain": pizzaListWidget.widgetDomain,
           },
         },
       ],
@@ -93,6 +134,33 @@ const handler = createMcpHandler(async (server) => {
           timestamp: new Date().toISOString(),
         },
         _meta: widgetMeta(contentWidget),
+      };
+    }
+  );
+
+  server.registerTool(
+    pizzaListWidget.id,
+    {
+      title: pizzaListWidget.title,
+      description: pizzaListWidget.description,
+      inputSchema: {
+        query: z.string().optional().describe("Optional search query to filter pizzerias"),
+      },
+      _meta: widgetMeta(pizzaListWidget),
+    },
+    async ({ query }) => {
+      return {
+        content: [
+          {
+            type: "text",
+            text: query ? `Showing pizza places matching: ${query}` : "Displaying the National Best Pizza List",
+          },
+        ],
+        structuredContent: {
+          query: query || undefined,
+          timestamp: new Date().toISOString(),
+        },
+        _meta: widgetMeta(pizzaListWidget),
       };
     }
   );

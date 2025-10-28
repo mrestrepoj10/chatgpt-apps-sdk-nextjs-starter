@@ -2,6 +2,7 @@
 
 import React from "react";
 import { FileText, Eye } from "lucide-react";
+import { useCallTool } from "@/app/hooks";
 
 interface Project {
   id: string;
@@ -12,10 +13,23 @@ interface Project {
 interface ProjectListAppProps {
   projects: Project[];
   error?: string;
-  onViewProject?: (project: Project) => void;
+  accessToken: string;
 }
 
-export function ProjectListApp({ projects, error, onViewProject }: ProjectListAppProps) {
+export function ProjectListApp({ projects, error, accessToken }: ProjectListAppProps) {
+  const callTool = useCallTool();
+
+  const handleViewProject = async (project: Project) => {
+    try {
+      await callTool("view_project_model", {
+        projectName: project.name,
+        urn: project.urn,
+        accessToken: accessToken,
+      });
+    } catch (error) {
+      console.error("Failed to open viewer:", error);
+    }
+  };
   if (error) {
     return (
       <div className="antialiased w-full text-black px-4 pb-2 border border-black/10 rounded-2xl sm:rounded-3xl overflow-hidden bg-white">
@@ -95,16 +109,14 @@ export function ProjectListApp({ projects, error, onViewProject }: ProjectListAp
                       </div>
                     </div>
                   </div>
-                  {onViewProject && (
-                    <button
-                      type="button"
-                      onClick={() => onViewProject(project)}
-                      className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black text-white text-xs font-medium hover:bg-gray-800 transition-colors"
-                    >
-                      <Eye className="w-3.5 h-3.5" strokeWidth={2} />
-                      <span className="hidden sm:inline">View</span>
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleViewProject(project)}
+                    className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black text-white text-xs font-medium hover:bg-gray-800 transition-colors"
+                  >
+                    <Eye className="w-3.5 h-3.5" strokeWidth={2} />
+                    <span className="hidden sm:inline">View</span>
+                  </button>
                 </div>
               </div>
             </div>

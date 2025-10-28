@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -21,7 +21,62 @@ const SCOPE_DESCRIPTIONS: Record<string, string> = {
   "tasks:write": "Create and update your tasks",
 };
 
-export default function ConsentPage() {
+function AuthorizationLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-white dark:bg-slate-800 shadow-lg rounded-lg p-8">
+          <div className="text-center">
+            <div className="inline-block w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Loading authorization...
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthorizationError({ message }: { message: string }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-white dark:bg-slate-800 shadow-lg rounded-lg p-8">
+          <div className="text-center">
+            <svg
+              className="w-16 h-16 mx-auto text-red-500 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <h2 className="text-xl font-semibold text-foreground mb-2">
+              Authorization Error
+            </h2>
+            <p className="text-sm text-red-600 dark:text-red-400 mb-4">
+              {message}
+            </p>
+            <a
+              href="/auth/login"
+              className="inline-block text-blue-600 dark:text-blue-400 hover:underline font-medium"
+            >
+              Back to login
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConsentPageContent() {
   const [authDetails, setAuthDetails] = useState<AuthorizationDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -123,58 +178,11 @@ export default function ConsentPage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white dark:bg-slate-800 shadow-lg rounded-lg p-8">
-            <div className="text-center">
-              <div className="inline-block w-12 h-12 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Loading authorization...
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <AuthorizationLoading />;
   }
 
   if (error || !authDetails) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white dark:bg-slate-800 shadow-lg rounded-lg p-8">
-            <div className="text-center">
-              <svg
-                className="w-16 h-16 mx-auto text-red-500 mb-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              <h2 className="text-xl font-semibold text-foreground mb-2">
-                Authorization Error
-              </h2>
-              <p className="text-sm text-red-600 dark:text-red-400 mb-4">
-                {error || "Invalid authorization request"}
-              </p>
-              <a
-                href="/auth/login"
-                className="inline-block text-blue-600 dark:text-blue-400 hover:underline font-medium"
-              >
-                Back to login
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <AuthorizationError message={error || "Invalid authorization request"} />;
   }
 
   return (
@@ -253,6 +261,14 @@ export default function ConsentPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ConsentPage() {
+  return (
+    <Suspense fallback={<AuthorizationLoading />}>
+      <ConsentPageContent />
+    </Suspense>
   );
 }
 

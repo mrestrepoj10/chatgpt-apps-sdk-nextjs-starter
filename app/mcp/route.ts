@@ -31,6 +31,8 @@ function widgetMeta(widget: ContentWidget) {
 const handler = createMcpHandler(async (server) => {
   const html = await getAppsSdkCompatibleHtml(baseURL, "/");
   const pizzaListHtml = await getAppsSdkCompatibleHtml(baseURL, "/pizza-list");
+  const projectListHtml = await getAppsSdkCompatibleHtml(baseURL, "/project-list");
+  const projectViewerHtml = await getAppsSdkCompatibleHtml(baseURL, "/project-viewer");
 
   const contentWidget: ContentWidget = {
     id: "show_content",
@@ -51,6 +53,28 @@ const handler = createMcpHandler(async (server) => {
     invoked: "Pizza list loaded",
     html: pizzaListHtml,
     description: "Displays the National Best Pizza List with rankings and ratings",
+    widgetDomain: baseURL,
+  };
+
+  const projectListWidget: ContentWidget = {
+    id: "project_list",
+    title: "Project List",
+    templateUri: "ui://widget/project-list-template.html",
+    invoking: "Loading project models...",
+    invoked: "Project list loaded",
+    html: projectListHtml,
+    description: "Displays a list of BIM project models with the ability to view them in 3D",
+    widgetDomain: baseURL,
+  };
+
+  const projectViewerWidget: ContentWidget = {
+    id: "view_project_model",
+    title: "View Project Model",
+    templateUri: "ui://widget/project-viewer-template.html",
+    invoking: "Loading 3D model viewer...",
+    invoked: "Model viewer loaded",
+    html: projectViewerHtml,
+    description: "Displays a 3D BIM model using Autodesk Viewer",
     widgetDomain: baseURL,
   };
 
@@ -110,6 +134,62 @@ const handler = createMcpHandler(async (server) => {
     })
   );
 
+  server.registerResource(
+    "project-list-widget",
+    projectListWidget.templateUri,
+    {
+      title: projectListWidget.title,
+      description: projectListWidget.description,
+      mimeType: "text/html+skybridge",
+      _meta: {
+        "openai/widgetDescription": projectListWidget.description,
+        "openai/widgetPrefersBorder": true,
+      },
+    },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "text/html+skybridge",
+          text: `<html>${projectListWidget.html}</html>`,
+          _meta: {
+            "openai/widgetDescription": projectListWidget.description,
+            "openai/widgetPrefersBorder": true,
+            "openai/widgetDomain": projectListWidget.widgetDomain,
+          },
+        },
+      ],
+    })
+  );
+
+  server.registerResource(
+    "project-viewer-widget",
+    projectViewerWidget.templateUri,
+    {
+      title: projectViewerWidget.title,
+      description: projectViewerWidget.description,
+      mimeType: "text/html+skybridge",
+      _meta: {
+        "openai/widgetDescription": projectViewerWidget.description,
+        "openai/widgetPrefersBorder": true,
+      },
+    },
+    async (uri) => ({
+      contents: [
+        {
+          uri: uri.href,
+          mimeType: "text/html+skybridge",
+          text: `<html>${projectViewerWidget.html}</html>`,
+          _meta: {
+            "openai/widgetDescription": projectViewerWidget.description,
+            "openai/widgetPrefersBorder": true,
+            "openai/widgetDomain": projectViewerWidget.widgetDomain,
+          },
+        },
+      ],
+    })
+  );
+
   server.registerTool(
     contentWidget.id,
     {
@@ -161,6 +241,61 @@ const handler = createMcpHandler(async (server) => {
           timestamp: new Date().toISOString(),
         },
         _meta: widgetMeta(pizzaListWidget),
+      };
+    }
+  );
+
+  server.registerTool(
+    projectListWidget.id,
+    {
+      title: projectListWidget.title,
+      description: "Display a list of BIM project models available to view",
+      inputSchema: {},
+      _meta: widgetMeta(projectListWidget),
+    },
+    async () => {
+      return {
+        content: [
+          {
+            type: "text",
+            text: "Displaying project models list",
+          },
+        ],
+        structuredContent: {
+          timestamp: new Date().toISOString(),
+        },
+        _meta: widgetMeta(projectListWidget),
+      };
+    }
+  );
+
+  server.registerTool(
+    projectViewerWidget.id,
+    {
+      title: projectViewerWidget.title,
+      description: "Display a 3D BIM model in the Autodesk Viewer",
+      inputSchema: {
+        projectName: z.string().describe("The name of the project/model to display"),
+        urn: z.string().describe("The URN of the model to load in the viewer"),
+        accessToken: z.string().describe("The access token for authentication"),
+      },
+      _meta: widgetMeta(projectViewerWidget),
+    },
+    async ({ projectName, urn, accessToken }) => {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Opening 3D model viewer for: ${projectName}`,
+          },
+        ],
+        structuredContent: {
+          projectName,
+          urn,
+          accessToken,
+          timestamp: new Date().toISOString(),
+        },
+        _meta: widgetMeta(projectViewerWidget),
       };
     }
   );

@@ -1,6 +1,6 @@
 import React from "react";
 import { createClient } from "@/lib/supabase/server";
-import { ProjectListContainer } from "./ProjectListContainer";
+import { ProjectListApp } from "./ProjectListApp";
 
 interface Project {
   id: string;
@@ -58,7 +58,7 @@ export default async function ProjectListPage() {
   const { projects, error, accessToken } = await fetchProjects();
 
   return (
-    <ProjectListContainer
+    <ProjectListApp
       projects={projects}
       error={error}
       accessToken={accessToken || ""}

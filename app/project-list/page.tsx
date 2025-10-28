@@ -26,7 +26,7 @@ async function fetchProjects(): Promise<{
     }
 
     // Send the access token as Bearer token
-    const response = await fetch("http://localhost:4321/api/aps/model-names", {
+    const response = await fetch("https://frame-git-dev-appsdk-mrestrepoj10s-projects.vercel.app/api/aps/model-names", {
       cache: "no-store",
       headers: {
         "Authorization": `Bearer ${session.access_token}`,

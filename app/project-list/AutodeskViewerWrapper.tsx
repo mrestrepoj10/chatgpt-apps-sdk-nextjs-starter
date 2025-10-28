@@ -166,7 +166,7 @@ export function AutodeskViewerWrapper({
       setError(null);
 
       try {
-        const response = await fetch(`http://localhost:4321/api/auth/aps-token?urn=${encodeURIComponent(urn)}`, {
+        const response = await fetch(`https://frame-git-dev-appsdk-mrestrepoj10s-projects.vercel.app/api/auth/aps-token?urn=${encodeURIComponent(urn)}`, {
           headers: {
             "Authorization": `Bearer ${accessToken}`,
           },
